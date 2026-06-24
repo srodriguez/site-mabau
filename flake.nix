@@ -17,11 +17,13 @@
             git
             awscli2
             python3   # used by setup-aws.sh for JSON parsing
+            zsh
           ];
 
           shellHook = ''
             echo "Hugo $(hugo version | head -1)"
             echo "AWS CLI $(aws --version)"
+            exec zsh
           '';
         };
 
