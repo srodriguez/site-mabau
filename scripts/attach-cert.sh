@@ -38,16 +38,21 @@ info "Using certificate: ${ACM_CERT_ARN}"
 
 # ─── fetch current distribution config ───────────────────────
 info "Fetching current distribution config..."
-CONFIG_JSON=$(aws cloudfront get-distribution-config --id "$CF_ID" --region us-east-1)
-ETAG=$(echo "$CONFIG_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['ETag'])")
+TMPFILE=$(mktemp /tmp/cf-config.XXXXXX.json)
+trap "rm -f $TMPFILE" EXIT
+
+aws cloudfront get-distribution-config --id "$CF_ID" --region us-east-1 > "$TMPFILE"
+ETAG=$(python3 -c "import json; print(json.load(open('$TMPFILE'))['ETag'])")
 
 # ─── patch: add CNAMEs + certificate ─────────────────────────
 info "Patching config with CNAMEs and certificate..."
-UPDATED=$(echo "$CONFIG_JSON" | python3 - <<EOF
-import sys, json
+UPDATED=$(python3 << PYEOF
+import json
 
-data = json.load(sys.stdin)
-cfg  = data['DistributionConfig']
+with open('$TMPFILE') as f:
+    data = json.load(f)
+
+cfg = data['DistributionConfig']
 
 cfg['Aliases'] = {
     'Quantity': 2,
@@ -55,15 +60,15 @@ cfg['Aliases'] = {
 }
 
 cfg['ViewerCertificate'] = {
-    'ACMCertificateArn':    '${ACM_CERT_ARN}',
-    'SSLSupportMethod':     'sni-only',
+    'ACMCertificateArn':      '$ACM_CERT_ARN',
+    'SSLSupportMethod':       'sni-only',
     'MinimumProtocolVersion': 'TLSv1.2_2021',
-    'Certificate':          '${ACM_CERT_ARN}',
-    'CertificateSource':    'acm'
+    'Certificate':            '$ACM_CERT_ARN',
+    'CertificateSource':      'acm'
 }
 
 print(json.dumps(cfg))
-EOF
+PYEOF
 )
 
 # ─── apply update ─────────────────────────────────────────────
