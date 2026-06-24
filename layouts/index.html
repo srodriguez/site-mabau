@@ -3,119 +3,384 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="{{ .Site.Params.tagline }} — {{ .Site.Title }}" />
-  <title>{{ .Site.Title }}</title>
+  <meta name="description" content="Mabau — Fine Argentine leather bags. Coming to Australia soon." />
+  <title>Mabau — Fine Argentine Leather</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
       --cream:  #f5f0e8;
-      --tan:    #c9a87c;
-      --brown:  #6b4c2a;
-      --dark:   #1a1410;
-      --light:  #faf7f2;
+      --dark:   #111009;
+      --orange: #e86e3a;
+      --muted:  #7a6e60;
+      --border: #ddd5c8;
     }
 
-    html, body {
-      height: 100%;
-    }
+    html { scroll-behavior: smooth; }
 
     body {
-      background-color: var(--light);
+      background: var(--cream);
       color: var(--dark);
       font-family: 'Georgia', 'Times New Roman', serif;
+      overflow-x: hidden;
+    }
+
+    /* ─── HEADER ─────────────────────────────── */
+    header {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 100;
+      padding: 1.25rem 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(245, 240, 232, 0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo img {
+      height: 42px;
+      width: auto;
+      mix-blend-mode: multiply;
+    }
+
+    .nav-contact a {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--dark);
+      text-decoration: none;
+      border-bottom: 1px solid var(--orange);
+      padding-bottom: 2px;
+      transition: color 0.2s;
+    }
+    .nav-contact a:hover { color: var(--orange); }
+
+    /* ─── HERO ───────────────────────────────── */
+    .hero {
+      min-height: 100svh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .hero-text {
       display: flex;
       flex-direction: column;
-      align-items: center;
       justify-content: center;
-      min-height: 100vh;
-      padding: 2rem;
+      padding: 9rem 4rem 4rem 4rem;
+      gap: 1.75rem;
     }
 
-    .wordmark {
-      letter-spacing: 0.35em;
-      font-size: clamp(2.5rem, 8vw, 5rem);
+    .hero-label {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 0.68rem;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: var(--orange);
+    }
+
+    .hero-heading {
+      font-size: clamp(2.6rem, 5vw, 4.8rem);
       font-weight: 400;
-      text-transform: uppercase;
-      color: var(--brown);
-      line-height: 1;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
     }
 
-    .divider {
-      width: 4rem;
-      height: 1px;
-      background: var(--tan);
-      margin: 2rem auto;
-    }
-
-    .tagline {
-      font-size: clamp(0.75rem, 2vw, 0.9rem);
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: var(--tan);
-      font-family: 'Helvetica Neue', 'Arial', sans-serif;
+    .hero-sub {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: clamp(0.85rem, 1.4vw, 1rem);
       font-weight: 300;
+      color: var(--muted);
+      line-height: 1.85;
+      max-width: 30ch;
     }
 
-    .sub {
-      margin-top: 0.75rem;
-      font-size: clamp(0.65rem, 1.5vw, 0.8rem);
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: #9c8060;
-      font-family: 'Helvetica Neue', 'Arial', sans-serif;
-      font-weight: 300;
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
     }
 
-    {{ if .Site.Params.email }}
-    .contact {
-      margin-top: 3rem;
-    }
-
-    .contact a {
-      font-size: 0.75rem;
+    .btn-primary {
+      display: inline-block;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 0.72rem;
       letter-spacing: 0.2em;
       text-transform: uppercase;
-      color: var(--brown);
+      color: #fff;
+      background: var(--orange);
+      padding: 0.9rem 2.2rem;
       text-decoration: none;
-      font-family: 'Helvetica Neue', 'Arial', sans-serif;
-      border-bottom: 1px solid var(--tan);
-      padding-bottom: 2px;
-      transition: color 0.2s, border-color 0.2s;
+      transition: background 0.25s;
+    }
+    .btn-primary:hover { background: var(--dark); }
+
+    .hero-image {
+      position: relative;
+      overflow: hidden;
+      background: #1a1614;
     }
 
-    .contact a:hover {
-      color: var(--tan);
-      border-color: var(--brown);
+    .hero-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center top;
+      display: block;
     }
-    {{ end }}
 
-    footer {
-      position: fixed;
-      bottom: 1.5rem;
+    /* ─── INTRO STRIP ────────────────────────── */
+    .intro {
+      display: grid;
+      grid-template-columns: 1fr 1px 1fr 1px 1fr;
+      gap: 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .intro-divider {
+      background: var(--border);
+    }
+
+    .intro-item {
+      padding: 3rem 3.5rem;
+      text-align: center;
+    }
+
+    .intro-item span {
+      display: block;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
       font-size: 0.65rem;
-      letter-spacing: 0.1em;
-      color: #c0b09a;
-      font-family: 'Helvetica Neue', 'Arial', sans-serif;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 0.6rem;
+    }
+
+    .intro-item p {
+      font-size: clamp(0.95rem, 1.5vw, 1.1rem);
+      font-weight: 400;
+      color: var(--dark);
+      line-height: 1.5;
+    }
+
+    /* ─── GALLERY ────────────────────────────── */
+    .gallery-header {
+      text-align: center;
+      padding: 5.5rem 2rem 3.5rem;
+    }
+
+    .gallery-header span {
+      display: block;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 0.75rem;
+    }
+
+    .gallery-header h2 {
+      font-size: clamp(1.8rem, 3vw, 2.8rem);
+      font-weight: 400;
+      letter-spacing: -0.01em;
+    }
+
+    .gallery {
+      padding: 0 1.25rem 6rem;
+      columns: 3;
+      column-gap: 1rem;
+    }
+
+    .gallery-item {
+      break-inside: avoid;
+      margin-bottom: 1rem;
+      overflow: hidden;
+      background: #e8e0d4;
+    }
+
+    .gallery-item img {
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  opacity 0.3s;
+      opacity: 0.96;
+    }
+
+    .gallery-item:hover img {
+      transform: scale(1.05);
+      opacity: 1;
+    }
+
+    /* ─── CONTACT ────────────────────────────── */
+    .contact {
+      background: var(--dark);
+      color: var(--cream);
+      text-align: center;
+      padding: 6rem 2rem;
+    }
+
+    .contact span {
+      display: block;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 1.5rem;
+    }
+
+    .contact h2 {
+      font-size: clamp(1.8rem, 3vw, 3rem);
+      font-weight: 400;
+      margin-bottom: 0.5rem;
+    }
+
+    .contact p {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 0.85rem;
+      color: #7a6e60;
+      margin-bottom: 2.5rem;
+    }
+
+    .contact a.email {
+      display: inline-block;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--cream);
+      text-decoration: none;
+      border-bottom: 1px solid var(--orange);
+      padding-bottom: 3px;
+      transition: color 0.2s;
+    }
+    .contact a.email:hover { color: var(--orange); }
+
+    /* ─── FOOTER ─────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 1.75rem 2rem;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 0.62rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+
+    /* ─── RESPONSIVE ─────────────────────────── */
+    @media (max-width: 960px) {
+      .hero { grid-template-columns: 1fr; }
+      .hero-image { height: 65vw; order: -1; }
+      .hero-text { padding: 3rem 2.5rem 3.5rem; }
+
+      .intro { grid-template-columns: 1fr; }
+      .intro-divider { display: none; }
+      .intro-item { padding: 2rem 2.5rem; border-bottom: 1px solid var(--border); }
+      .intro-item:last-child { border-bottom: none; }
+
+      .gallery { columns: 2; }
+    }
+
+    @media (max-width: 540px) {
+      header { padding: 1rem 1.25rem; }
+      .logo img { height: 34px; }
+      .hero-text { padding: 2.5rem 1.5rem 3rem; }
+      .gallery { columns: 1; padding: 0 0.75rem 4rem; }
+      .gallery-header { padding: 4rem 1.5rem 2.5rem; }
     }
   </style>
 </head>
 <body>
 
-  <main>
-    <h1 class="wordmark">{{ .Site.Title }}</h1>
-    <div class="divider"></div>
-    <p class="tagline">{{ .Site.Params.tagline }}</p>
-    <p class="sub">Fine Argentine Leather — Australia</p>
-
+  <!-- HEADER -->
+  <header>
+    <a class="logo" href="/">
+      <img src="/images/logos/mabau-logo.svg" alt="Mabau" />
+    </a>
     {{ with .Site.Params.email }}
-    <div class="contact">
-      <a href="mailto:{{ . }}">{{ . }}</a>
-    </div>
+    <nav class="nav-contact">
+      <a href="mailto:{{ . }}">Contact</a>
+    </nav>
     {{ end }}
-  </main>
+  </header>
 
-  <footer>&copy; {{ now.Year }} {{ .Site.Title }}</footer>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-text">
+      <p class="hero-label">Fine Argentine Leather — Coming to Australia</p>
+      <h1 class="hero-heading">Carry something beautiful.</h1>
+      <p class="hero-sub">Handcrafted leather bags from Buenos Aires. Bold colours, impeccable craft, made for women who move.</p>
+      {{ with .Site.Params.email }}
+      <div class="hero-actions">
+        <a class="btn-primary" href="mailto:{{ . }}">Get in touch</a>
+      </div>
+      {{ end }}
+    </div>
+    <div class="hero-image">
+      <img src="/images/models/dione-oro.png" alt="Mabau Dione — gold studded leather hobo bag" />
+    </div>
+  </section>
+
+  <!-- INTRO STRIP -->
+  <div class="intro">
+    <div class="intro-item">
+      <span>Origin</span>
+      <p>Made in Buenos Aires,<br>Argentina</p>
+    </div>
+    <div class="intro-divider"></div>
+    <div class="intro-item">
+      <span>Material</span>
+      <p>Fine Argentine leather,<br>built to last</p>
+    </div>
+    <div class="intro-divider"></div>
+    <div class="intro-item">
+      <span>Family owned</span>
+      <p>Designed with love,<br>coming to Australia</p>
+    </div>
+  </div>
+
+  <!-- GALLERY -->
+  <div class="gallery-header">
+    <span>The Collection</span>
+    <h2>Argentine style, for every occasion</h2>
+  </div>
+
+  <section class="gallery">
+    <div class="gallery-item"><img src="/images/models/olivia-dorada.jpeg"    alt="Olivia — gold leather backpack"           loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/devi-print.png"         alt="Devi Print — leopard crossbody bag"        loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/sophia-chain-bags.jpeg" alt="Sophia — metallic chain shoulder bags"     loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/inti-negra-charol.png"  alt="Inti Negra — patent leather bum bag"       loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/black-editorial.jpeg"   alt="Editorial — black leather bag"             loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/mia-print.png"          alt="Mia Print — leopard leather backpack"      loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/yellow-sling.jpeg"      alt="Yellow leather sling bag"                  loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/lina.png"               alt="Lina — studded silver leather bag"         loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/pink-metallic-bumbag.jpeg" alt="Pink metallic leather bum bag"          loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/black-shoulder-bag.jpeg" alt="Classic black leather shoulder bag"       loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/street-tan-bag.jpeg"    alt="Tan leather backpack — Buenos Aires"       loading="lazy" /></div>
+    <div class="gallery-item"><img src="/images/models/sophia-varias.jpeg"     alt="Sophia — collection of leather bags"       loading="lazy" /></div>
+  </section>
+
+  <!-- CONTACT -->
+  <section class="contact">
+    <span>Coming Soon to Australia</span>
+    <h2>Be the first to know.</h2>
+    <p>Enquiries, wholesale and stockist opportunities welcome.</p>
+    {{ with .Site.Params.email }}
+    <a class="email" href="mailto:{{ . }}">{{ . }}</a>
+    {{ end }}
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    &copy; {{ now.Year }} Mabau &mdash; mabau.com.au &mdash; Fine Argentine Leather
+  </footer>
 
 </body>
 </html>
