@@ -1,0 +1,8 @@
+baseURL = 'https://mabau.com.au/'
+locale = 'en-AU'
+title = 'Mabau'
+disableKinds = ['taxonomy', 'term', 'RSS', 'sitemap']
+
+[params]
+  tagline   = 'Coming Soon'
+  email     = ''

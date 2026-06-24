@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="{{ .Site.Language.Locale }}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="{{ .Site.Params.tagline }} — {{ .Site.Title }}" />
+  <title>{{ .Site.Title }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream:  #f5f0e8;
+      --tan:    #c9a87c;
+      --brown:  #6b4c2a;
+      --dark:   #1a1410;
+      --light:  #faf7f2;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      background-color: var(--light);
+      color: var(--dark);
+      font-family: 'Georgia', 'Times New Roman', serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .wordmark {
+      letter-spacing: 0.35em;
+      font-size: clamp(2.5rem, 8vw, 5rem);
+      font-weight: 400;
+      text-transform: uppercase;
+      color: var(--brown);
+      line-height: 1;
+    }
+
+    .divider {
+      width: 4rem;
+      height: 1px;
+      background: var(--tan);
+      margin: 2rem auto;
+    }
+
+    .tagline {
+      font-size: clamp(0.75rem, 2vw, 0.9rem);
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--tan);
+      font-family: 'Helvetica Neue', 'Arial', sans-serif;
+      font-weight: 300;
+    }
+
+    .sub {
+      margin-top: 0.75rem;
+      font-size: clamp(0.65rem, 1.5vw, 0.8rem);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #9c8060;
+      font-family: 'Helvetica Neue', 'Arial', sans-serif;
+      font-weight: 300;
+    }
+
+    {{ if .Site.Params.email }}
+    .contact {
+      margin-top: 3rem;
+    }
+
+    .contact a {
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--brown);
+      text-decoration: none;
+      font-family: 'Helvetica Neue', 'Arial', sans-serif;
+      border-bottom: 1px solid var(--tan);
+      padding-bottom: 2px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .contact a:hover {
+      color: var(--tan);
+      border-color: var(--brown);
+    }
+    {{ end }}
+
+    footer {
+      position: fixed;
+      bottom: 1.5rem;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      color: #c0b09a;
+      font-family: 'Helvetica Neue', 'Arial', sans-serif;
+    }
+  </style>
+</head>
+<body>
+
+  <main>
+    <h1 class="wordmark">{{ .Site.Title }}</h1>
+    <div class="divider"></div>
+    <p class="tagline">{{ .Site.Params.tagline }}</p>
+    <p class="sub">Fine Argentine Leather — Australia</p>
+
+    {{ with .Site.Params.email }}
+    <div class="contact">
+      <a href="mailto:{{ . }}">{{ . }}</a>
+    </div>
+    {{ end }}
+  </main>
+
+  <footer>&copy; {{ now.Year }} {{ .Site.Title }}</footer>
+
+</body>
+</html>
