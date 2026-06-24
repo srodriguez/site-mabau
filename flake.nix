@@ -15,10 +15,13 @@
           packages = with pkgs; [
             hugo
             git
+            awscli2
+            python3   # used by setup-aws.sh for JSON parsing
           ];
 
           shellHook = ''
             echo "Hugo $(hugo version | head -1)"
+            echo "AWS CLI $(aws --version)"
           '';
         };
 
