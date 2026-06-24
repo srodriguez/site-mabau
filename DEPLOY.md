@@ -12,10 +12,12 @@ GitHub (push to main)
     → Hugo build (--minify)
     → aws s3 sync → S3 bucket (mabau.com.au, ap-southeast-2)
     → CloudFront invalidation (E2VKLXA034ODT8)
-      → serves via HTTPS at mabau.com.au + www.mabau.com.au
+      → serves via HTTPS at www.mabau.com.au
+         mabau.com.au → 301 redirect → www.mabau.com.au (GoDaddy forwarding)
 ```
 
-**Key IDs (already provisioned):**
+**Provisioned resources:**
+
 | Resource | ID / Value |
 |----------|-----------|
 | S3 bucket | `mabau.com.au` (ap-southeast-2) |
@@ -48,34 +50,45 @@ aws acm request-certificate \
 aws acm describe-certificate \
   --region us-east-1 \
   --certificate-arn <ARN> \
-  --query 'Certificate.DomainValidationOptions[].ResourceRecord' \
+  --query 'Certificate.DomainValidationOptions[].{Domain:DomainName,Status:ValidationStatus,Name:ResourceRecord.Name,Value:ResourceRecord.Value}' \
   --output table
 ```
 
-Add both CNAME records to your DNS (Cloudflare or GoDaddy). One for `mabau.com.au`, one for `www.mabau.com.au`.
+This returns two CNAME records. Add them in GoDaddy DNS:
 
-### Wait for ISSUED status
+| Type | Name | Value |
+|------|------|-------|
+| CNAME | `_4c2c89c0898aa178ca82c1afff8e7646` | `_b0e80caaa00f303ea595786705c26eaa.jkddzztszm.acm-validations.aws` |
+| CNAME | `_0c93bf37177dea24f40d387457021082.www` | `_bac0bca4aa1e128c6fbe1ddf5be1b1fc.jkddzztszm.acm-validations.aws` |
+
+> **GoDaddy gotcha:** strip the trailing `.` from both Name and Value — GoDaddy appends the zone automatically. Also strip `.mabau.com.au` from the Name — GoDaddy adds that too.
+
+### Watch for validation
 
 ```bash
 viddy -n 15 aws acm describe-certificate \
   --region us-east-1 \
   --certificate-arn <ARN> \
-  --query 'Certificate.Status' \
-  --output text
+  --query 'Certificate.{Status:Status}' \
+  --output table
 ```
 
-Usually 5–30 minutes once the DNS validation CNAMEs propagate.
+Usually **5–30 minutes** once the DNS CNAMEs propagate. Status goes `PENDING_VALIDATION` → `ISSUED`.
 
 ### Attach to CloudFront
 
-Once status is `ISSUED`, run:
+Once status is `ISSUED`:
 
 ```bash
 ./scripts/attach-cert.sh
 ```
 
-The script auto-detects the issued cert and updates distribution `E2VKLXA034ODT8` in-place.
-To pass the ARN explicitly: `ACM_CERT_ARN=arn:... ./scripts/attach-cert.sh`
+The script auto-detects the issued cert and updates the distribution in-place.
+To pass the ARN explicitly:
+
+```bash
+ACM_CERT_ARN=arn:aws:acm:us-east-1:... ./scripts/attach-cert.sh
+```
 
 ---
 
@@ -87,7 +100,7 @@ Already created. To re-create from scratch:
 ./scripts/setup-aws.sh
 ```
 
-**Manual settings (already applied):**
+**Settings:**
 - Region: `ap-southeast-2` (Sydney)
 - Block Public Access: all four boxes **unchecked**
 - Static website hosting: **enabled**, index/error document = `index.html`
@@ -97,14 +110,14 @@ Already created. To re-create from scratch:
 
 ## 3. CloudFront Distribution
 
-Already created (ID: `E2VKLXA034ODT8`). Settings:
+Already created (ID: `E2VKLXA034ODT8`).
 
 | Setting | Value |
 |---------|-------|
 | Origin | `mabau.com.au.s3-website-ap-southeast-2.amazonaws.com` |
 | Origin protocol | HTTP only (S3 website endpoint) |
 | Viewer protocol | Redirect HTTP → HTTPS |
-| CNAMEs | `mabau.com.au`, `www.mabau.com.au` (added after cert is issued) |
+| CNAMEs | `mabau.com.au`, `www.mabau.com.au` |
 | Cache policy | Managed-CachingOptimized |
 | Price class | All edge locations |
 | Default root object | `index.html` |
@@ -112,68 +125,59 @@ Already created (ID: `E2VKLXA034ODT8`). Settings:
 ### Verify it's serving correctly
 
 ```bash
-# Direct S3 (no CloudFront)
+# Direct S3 (bypasses CloudFront — confirms S3 itself works)
 curl -I http://mabau.com.au.s3-website-ap-southeast-2.amazonaws.com
 
-# Via CloudFront
+# Via CloudFront domain
 curl -I https://d3uzbsmp32x4c4.cloudfront.net
 
-# Production domain
-curl -I https://mabau.com.au
+# Production
 curl -I https://www.mabau.com.au
 ```
 
+Look for `HTTP/2 200` and `x-cache: Hit from cloudfront` (on second request).
+
 ---
 
-## 4. DNS (GoDaddy + Cloudflare)
+## 4. DNS (GoDaddy)
 
-### Important: GoDaddy apex limitation
+### Apex domain limitation
 
-GoDaddy does **not** support ALIAS/ANAME records pointing to a hostname — their ALIAS record expects an IP address. CloudFront only provides a hostname, not an IP.
+GoDaddy does **not** support ALIAS/ANAME records pointing to a hostname — their record types expect an IP address. CloudFront only provides a hostname.
 
-**Solution: use Cloudflare for DNS** (free). Cloudflare supports CNAME flattening at the apex (`@`).
+**Solution used: GoDaddy URL forwarding.**
+`mabau.com.au` 301-redirects to `https://www.mabau.com.au` via GoDaddy's Forwarding feature. `www` is the canonical domain served by CloudFront.
 
-### Migrate to Cloudflare
-
-1. Create a free account at cloudflare.com
-2. Add site `mabau.com.au` — Cloudflare will scan existing GoDaddy records
-3. In GoDaddy → **DNS → Nameservers → Change** → enter Cloudflare's two NS records
-4. Wait for nameserver propagation (up to 24h, usually under 1h)
-
-### Cloudflare DNS records
-
-| Type | Name | Value | Proxy |
-|------|------|-------|-------|
-| CNAME | `www` | `d3uzbsmp32x4c4.cloudfront.net` | DNS only |
-| CNAME | `@` | `d3uzbsmp32x4c4.cloudfront.net` | DNS only |
-
-> Use **DNS only** (grey cloud), not proxied — CloudFront handles the CDN.
-
-### ACM certificate DNS validation CNAMEs
-
-Also add these in Cloudflare (values from `aws acm describe-certificate`):
+### GoDaddy DNS records
 
 | Type | Name | Value |
 |------|------|-------|
-| CNAME | `_<hash>.mabau.com.au` | `_<hash>.acm-validations.aws` |
-| CNAME | `_<hash>.www.mabau.com.au` | `_<hash>.acm-validations.aws` |
+| CNAME | `www` | `d3uzbsmp32x4c4.cloudfront.net` |
+| Forwarding | `@` | `https://www.mabau.com.au` (301, Forward only) |
 
-### Verify DNS propagation
+Forwarding is configured under **GoDaddy DNS → Forwarding** (at the bottom of the DNS page), not under the regular records.
+
+### ACM validation CNAMEs (already added)
+
+| Type | Name | Value |
+|------|------|-------|
+| CNAME | `_4c2c89c0898aa178ca82c1afff8e7646` | `_b0e80caaa00f303ea595786705c26eaa.jkddzztszm.acm-validations.aws` |
+| CNAME | `_0c93bf37177dea24f40d387457021082.www` | `_bac0bca4aa1e128c6fbe1ddf5be1b1fc.jkddzztszm.acm-validations.aws` |
+
+### Verify DNS
 
 ```bash
-dig CNAME www.mabau.com.au +short
-dig CNAME mabau.com.au +short
+dig CNAME www.mabau.com.au +short    # → d3uzbsmp32x4c4.cloudfront.net
+dig MX mabau.com.au +short           # → mx1/mx2.improvmx.com
 ```
-
-Both should return `d3uzbsmp32x4c4.cloudfront.net`.
-
-Check globally: https://dnschecker.org
 
 ---
 
 ## 5. Email Forwarding (ImprovMX)
 
-`eugenia@mabau.com.au` forwards via ImprovMX. Add these in Cloudflare DNS:
+`eugenia@mabau.com.au` forwards via ImprovMX.
+
+### GoDaddy DNS records (already added)
 
 | Type | Name | Value | Priority |
 |------|------|-------|----------|
@@ -181,7 +185,7 @@ Check globally: https://dnschecker.org
 | MX | `@` | `mx2.improvmx.com` | 20 |
 | TXT | `@` | `v=spf1 include:spf.improvmx.com ~all` | — |
 
-> If MX records exist from a previous provider, **delete them first** before adding ImprovMX ones.
+> If MX records from a previous provider still exist, delete them first — conflicting MX records prevent ImprovMX from validating.
 
 Verify:
 ```bash
@@ -193,19 +197,20 @@ dig TXT mabau.com.au +short
 
 ## 6. IAM Deploy User
 
-User `mabau-deploy` has an inline policy scoped to this site only:
-- `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket` on `mabau.com.au` bucket
-- `cloudfront:CreateInvalidation` on distribution `E2VKLXA034ODT8`
+User `mabau-deploy` has a least-privilege inline policy:
+- `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket` on `mabau.com.au` bucket only
+- `cloudfront:CreateInvalidation` on distribution `E2VKLXA034ODT8` only
+
+> **Important:** `mabau-deploy` is a separate IAM user from any other site's deploy user — intentional, to contain blast radius if the key is ever compromised.
 
 To re-apply the policy:
 ```bash
 ./scripts/attach-policy.sh
 ```
 
-To create a new access key (if the old one is lost):
+To create a new access key (if lost — secret is shown once only):
 ```bash
 aws iam create-access-key --user-name mabau-deploy
-# Copy both AccessKeyId and SecretAccessKey — secret is shown once only
 ```
 
 ---
@@ -223,7 +228,7 @@ Set under **repo → Settings → Secrets and variables → Actions**:
 
 ---
 
-## 8. First / manual deploy
+## 8. Manual deploy
 
 ```bash
 nix develop
@@ -248,11 +253,13 @@ aws cloudfront create-invalidation \
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| `InvalidViewerCertificate` on CloudFront create | CNAMEs set but no cert attached | Run `attach-cert.sh` once cert is ISSUED |
-| Site shows CloudFront default page | Distribution not yet propagated | Wait 10–20 min |
-| `www` works but apex (`@`) doesn't | GoDaddy ALIAS limitation | Migrate DNS to Cloudflare |
-| Email forwarding not working | Missing or conflicting MX records | Delete old MX records, add ImprovMX ones |
-| GitHub Actions deploy fails with 403 | IAM key missing or policy too narrow | Check secrets + re-run `attach-policy.sh` |
-| ACM cert stuck in `PENDING_VALIDATION` | DNS validation CNAMEs not added or not propagated | Add CNAMEs, wait for propagation |
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `403 ERROR` from CloudFront | Distribution has no CNAMEs set | Run `attach-cert.sh` once cert is ISSUED |
+| `InvalidViewerCertificate` | Trying to set CNAMEs without a cert | Wait for cert to be ISSUED first, then re-run |
+| Cert stuck in `PENDING_VALIDATION` | DNS validation CNAMEs not added or not propagated | Add CNAMEs in GoDaddy, strip trailing `.` from name/value |
+| `www` works, apex (`@`) doesn't | GoDaddy ALIAS limitation | Use GoDaddy Forwarding: `@` → `https://www.mabau.com.au` (301) |
+| Email forwarding not validating | Missing/conflicting MX records | Delete old MX records, add ImprovMX ones |
+| GitHub Actions deploy fails 403 | IAM key missing or policy too narrow | Check secrets, re-run `attach-policy.sh` |
+| `json.decoder.JSONDecodeError` in attach-cert.sh | Python heredoc not receiving piped input | Fixed — script now uses a temp file |
+| CloudFront shows old content | Cache not invalidated | `aws cloudfront create-invalidation --distribution-id E2VKLXA034ODT8 --paths "/*"` |
