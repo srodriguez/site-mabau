@@ -5,4 +5,4 @@ disableKinds = ['taxonomy', 'term', 'RSS', 'sitemap']
 
 [params]
   tagline   = 'Coming Soon'
-  email     = ''
+  email     = 'eugenia@mabau.com.au'
