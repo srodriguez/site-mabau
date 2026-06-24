@@ -4,126 +4,255 @@ Static site hosted on S3 + CloudFront, deployed via GitHub Actions on push to `m
 
 ---
 
-## 1. ACM Certificate (must be in us-east-1)
+## Overview
 
-1. Open **AWS Certificate Manager** — switch region to **US East (N. Virginia)**.
-2. Click **Request** → **Request a public certificate**.
-3. Add domain names: `mabau.com.au` and `www.mabau.com.au`.
-4. Choose **DNS validation** → **Request**.
-5. Expand the certificate and copy the CNAME name/value for each domain.
-6. In GoDaddy DNS, add both CNAME records (strip the trailing `.` from the value if GoDaddy adds it automatically).
-7. Wait for status to show **Issued** (usually 5–30 min).
+```
+GitHub (push to main)
+  → GitHub Actions (.github/workflows/deploy.yml)
+    → Hugo build (--minify)
+    → aws s3 sync → S3 bucket (mabau.com.au, ap-southeast-2)
+    → CloudFront invalidation (E2VKLXA034ODT8)
+      → serves via HTTPS at mabau.com.au + www.mabau.com.au
+```
+
+**Key IDs (already provisioned):**
+| Resource | ID / Value |
+|----------|-----------|
+| S3 bucket | `mabau.com.au` (ap-southeast-2) |
+| CloudFront distribution | `E2VKLXA034ODT8` |
+| CloudFront domain | `d3uzbsmp32x4c4.cloudfront.net` |
+| IAM deploy user | `mabau-deploy` |
+| Contact email | `eugenia@mabau.com.au` (forwarded via ImprovMX) |
+
+---
+
+## 1. ACM Certificate (us-east-1)
+
+CloudFront **requires** the certificate to be in `us-east-1` regardless of where the bucket is.
+
+### Request
+
+```bash
+aws acm request-certificate \
+  --region us-east-1 \
+  --domain-name "mabau.com.au" \
+  --subject-alternative-names "www.mabau.com.au" \
+  --validation-method DNS \
+  --query 'CertificateArn' \
+  --output text
+```
+
+### Get the DNS validation records
+
+```bash
+aws acm describe-certificate \
+  --region us-east-1 \
+  --certificate-arn <ARN> \
+  --query 'Certificate.DomainValidationOptions[].ResourceRecord' \
+  --output table
+```
+
+Add both CNAME records to your DNS (Cloudflare or GoDaddy). One for `mabau.com.au`, one for `www.mabau.com.au`.
+
+### Wait for ISSUED status
+
+```bash
+viddy -n 15 aws acm describe-certificate \
+  --region us-east-1 \
+  --certificate-arn <ARN> \
+  --query 'Certificate.Status' \
+  --output text
+```
+
+Usually 5–30 minutes once the DNS validation CNAMEs propagate.
+
+### Attach to CloudFront
+
+Once status is `ISSUED`, run:
+
+```bash
+./scripts/attach-cert.sh
+```
+
+The script auto-detects the issued cert and updates distribution `E2VKLXA034ODT8` in-place.
+To pass the ARN explicitly: `ACM_CERT_ARN=arn:... ./scripts/attach-cert.sh`
 
 ---
 
 ## 2. S3 Bucket
 
-1. Open **S3** → **Create bucket**.
-2. **Bucket name**: `mabau.com.au` (must match the domain exactly).
-3. **Region**: `ap-southeast-2` (Sydney).
-4. **Block Public Access**: uncheck all four boxes → confirm.
-5. Create the bucket.
-6. Go to the bucket → **Properties** → **Static website hosting** → **Enable**.
-   - Index document: `index.html`
-   - Error document: `index.html`
-7. Note the **Bucket website endpoint** (you won't use it directly — CloudFront will be the origin).
+Already created. To re-create from scratch:
 
-### Bucket policy (allow CloudFront OAC)
+```bash
+./scripts/setup-aws.sh
+```
 
-After creating the CloudFront distribution (step 3), S3 will prompt you to copy a
-generated bucket policy. Paste it under **Permissions → Bucket policy**.
+**Manual settings (already applied):**
+- Region: `ap-southeast-2` (Sydney)
+- Block Public Access: all four boxes **unchecked**
+- Static website hosting: **enabled**, index/error document = `index.html`
+- Bucket policy: public read on `arn:aws:s3:::mabau.com.au/*`
 
 ---
 
 ## 3. CloudFront Distribution
 
-1. Open **CloudFront** → **Create distribution**.
-2. **Origin domain**: select the S3 bucket (`mabau.com.au.s3.ap-southeast-2.amazonaws.com`).
-   - Do **not** use the S3 website endpoint here.
-3. **Origin access**: **Origin access control (OAC)** → **Create new OAC** (default settings).
-4. **Viewer protocol policy**: **Redirect HTTP to HTTPS**.
-5. **Alternate domain names (CNAMEs)**: add `mabau.com.au` and `www.mabau.com.au`.
-6. **Custom SSL certificate**: select the ACM certificate created in step 1.
-7. **Default root object**: `index.html`.
-8. **Price class**: `Use only North America and Europe` — or `All edge locations` for AU-focused latency (recommended).
-9. Create distribution.
-10. Copy the S3 bucket policy that CloudFront generates and apply it to the bucket (step 2).
-11. Note the **Distribution domain name** (e.g. `d1abc123xyz.cloudfront.net`) — needed for DNS.
+Already created (ID: `E2VKLXA034ODT8`). Settings:
 
----
+| Setting | Value |
+|---------|-------|
+| Origin | `mabau.com.au.s3-website-ap-southeast-2.amazonaws.com` |
+| Origin protocol | HTTP only (S3 website endpoint) |
+| Viewer protocol | Redirect HTTP → HTTPS |
+| CNAMEs | `mabau.com.au`, `www.mabau.com.au` (added after cert is issued) |
+| Cache policy | Managed-CachingOptimized |
+| Price class | All edge locations |
+| Default root object | `index.html` |
 
-## 4. GoDaddy DNS
+### Verify it's serving correctly
 
-| Type  | Name | Value                              | Notes                                      |
-|-------|------|------------------------------------|--------------------------------------------|
-| CNAME | www  | `d1abc123xyz.cloudfront.net`       | Replace with your actual CF domain         |
-| ALIAS | @    | `d1abc123xyz.cloudfront.net`       | GoDaddy calls this "ALIAS" or "ANAME"      |
+```bash
+# Direct S3 (no CloudFront)
+curl -I http://mabau.com.au.s3-website-ap-southeast-2.amazonaws.com
 
-> **Apex records**: GoDaddy supports an ALIAS/ANAME record type for the root domain (`@`),
-> which resolves to an IP at query time. Use this instead of A records so the apex points
-> at CloudFront. If GoDaddy's UI only shows A/CNAME, look for "ALIAS" in the record type
-> dropdown.
+# Via CloudFront
+curl -I https://d3uzbsmp32x4c4.cloudfront.net
 
-TTL: 600 seconds (10 min) initially; increase to 3600 once stable.
-
----
-
-## 5. GitHub Actions Secrets
-
-In your GitHub repo → **Settings → Secrets and variables → Actions**, add:
-
-| Secret name                  | Value                                      |
-|------------------------------|--------------------------------------------|
-| `AWS_ACCESS_KEY_ID`          | IAM user access key (see below)            |
-| `AWS_SECRET_ACCESS_KEY`      | IAM user secret key                        |
-| `S3_BUCKET`                  | `mabau.com.au`                             |
-| `CLOUDFRONT_DISTRIBUTION_ID` | From the CloudFront console (e.g. `E2...`) |
-
-### IAM user permissions
-
-Create a dedicated IAM user with this inline policy (least privilege):
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-      "Resource": [
-        "arn:aws:s3:::mabau.com.au",
-        "arn:aws:s3:::mabau.com.au/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": "cloudfront:CreateInvalidation",
-      "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
-    }
-  ]
-}
+# Production domain
+curl -I https://mabau.com.au
+curl -I https://www.mabau.com.au
 ```
 
-Replace `<ACCOUNT_ID>` and `<DISTRIBUTION_ID>` with your actual values.
-
 ---
 
-## 6. First Deploy
+## 4. DNS (GoDaddy + Cloudflare)
 
-Push to `main` — the workflow will build with Hugo and sync to S3 automatically.
+### Important: GoDaddy apex limitation
 
-Check the **Actions** tab in GitHub to monitor progress. First propagation through
-CloudFront can take 5–15 minutes.
+GoDaddy does **not** support ALIAS/ANAME records pointing to a hostname — their ALIAS record expects an IP address. CloudFront only provides a hostname, not an IP.
 
----
+**Solution: use Cloudflare for DNS** (free). Cloudflare supports CNAME flattening at the apex (`@`).
 
-## Adding the Contact Email
+### Migrate to Cloudflare
 
-Once you have the email address, edit `hugo.toml`:
+1. Create a free account at cloudflare.com
+2. Add site `mabau.com.au` — Cloudflare will scan existing GoDaddy records
+3. In GoDaddy → **DNS → Nameservers → Change** → enter Cloudflare's two NS records
+4. Wait for nameserver propagation (up to 24h, usually under 1h)
 
-```toml
-[params]
-  email = 'hello@mabau.com.au'
+### Cloudflare DNS records
+
+| Type | Name | Value | Proxy |
+|------|------|-------|-------|
+| CNAME | `www` | `d3uzbsmp32x4c4.cloudfront.net` | DNS only |
+| CNAME | `@` | `d3uzbsmp32x4c4.cloudfront.net` | DNS only |
+
+> Use **DNS only** (grey cloud), not proxied — CloudFront handles the CDN.
+
+### ACM certificate DNS validation CNAMEs
+
+Also add these in Cloudflare (values from `aws acm describe-certificate`):
+
+| Type | Name | Value |
+|------|------|-------|
+| CNAME | `_<hash>.mabau.com.au` | `_<hash>.acm-validations.aws` |
+| CNAME | `_<hash>.www.mabau.com.au` | `_<hash>.acm-validations.aws` |
+
+### Verify DNS propagation
+
+```bash
+dig CNAME www.mabau.com.au +short
+dig CNAME mabau.com.au +short
 ```
 
-Commit and push — the mailto link will appear on the site automatically.
+Both should return `d3uzbsmp32x4c4.cloudfront.net`.
+
+Check globally: https://dnschecker.org
+
+---
+
+## 5. Email Forwarding (ImprovMX)
+
+`eugenia@mabau.com.au` forwards via ImprovMX. Add these in Cloudflare DNS:
+
+| Type | Name | Value | Priority |
+|------|------|-------|----------|
+| MX | `@` | `mx1.improvmx.com` | 10 |
+| MX | `@` | `mx2.improvmx.com` | 20 |
+| TXT | `@` | `v=spf1 include:spf.improvmx.com ~all` | — |
+
+> If MX records exist from a previous provider, **delete them first** before adding ImprovMX ones.
+
+Verify:
+```bash
+dig MX mabau.com.au +short
+dig TXT mabau.com.au +short
+```
+
+---
+
+## 6. IAM Deploy User
+
+User `mabau-deploy` has an inline policy scoped to this site only:
+- `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket` on `mabau.com.au` bucket
+- `cloudfront:CreateInvalidation` on distribution `E2VKLXA034ODT8`
+
+To re-apply the policy:
+```bash
+./scripts/attach-policy.sh
+```
+
+To create a new access key (if the old one is lost):
+```bash
+aws iam create-access-key --user-name mabau-deploy
+# Copy both AccessKeyId and SecretAccessKey — secret is shown once only
+```
+
+---
+
+## 7. GitHub Actions Secrets
+
+Set under **repo → Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|--------|-------|
+| `AWS_ACCESS_KEY_ID` | `mabau-deploy` IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | `mabau-deploy` IAM secret key |
+| `S3_BUCKET` | `mabau.com.au` |
+| `CLOUDFRONT_DISTRIBUTION_ID` | `E2VKLXA034ODT8` |
+
+---
+
+## 8. First / manual deploy
+
+```bash
+nix develop
+hugo --minify
+aws s3 sync public/ s3://mabau.com.au --delete
+aws cloudfront create-invalidation \
+  --distribution-id E2VKLXA034ODT8 \
+  --paths "/*"
+```
+
+---
+
+## 9. Scripts reference
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/setup-aws.sh` | Create S3 bucket + CloudFront distribution from scratch |
+| `scripts/attach-cert.sh` | Attach ACM cert + CNAMEs to existing CloudFront distribution |
+| `scripts/attach-policy.sh` | Attach least-privilege IAM policy to `mabau-deploy` user |
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| `InvalidViewerCertificate` on CloudFront create | CNAMEs set but no cert attached | Run `attach-cert.sh` once cert is ISSUED |
+| Site shows CloudFront default page | Distribution not yet propagated | Wait 10–20 min |
+| `www` works but apex (`@`) doesn't | GoDaddy ALIAS limitation | Migrate DNS to Cloudflare |
+| Email forwarding not working | Missing or conflicting MX records | Delete old MX records, add ImprovMX ones |
+| GitHub Actions deploy fails with 403 | IAM key missing or policy too narrow | Check secrets + re-run `attach-policy.sh` |
+| ACM cert stuck in `PENDING_VALIDATION` | DNS validation CNAMEs not added or not propagated | Add CNAMEs, wait for propagation |
