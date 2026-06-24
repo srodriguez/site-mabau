@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 # setup-aws.sh — provision S3 + CloudFront for mabau.com.au
 #
-# Prerequisites:
-#   - AWS CLI installed and authenticated (run: aws configure)
-#   - ACM certificate already issued in us-east-1 (see DEPLOY.md step 1)
-#
 # Usage:
-#   chmod +x scripts/setup-aws.sh
 #   ./scripts/setup-aws.sh
 #
 # What it does:
-#   1. Creates the S3 bucket with static website hosting
-#   2. Applies a bucket policy allowing public read
-#   3. Creates a CloudFront distribution pointing at the bucket
-#   4. Prints the CloudFront domain + the secrets you need to add to GitHub
+#   1. Checks AWS credentials
+#   2. Creates the S3 bucket with static website hosting
+#   3. Looks up an issued ACM certificate for mabau.com.au in us-east-1
+#   4. Creates a CloudFront distribution
+#      - With CNAMEs if a cert was found
+#      - Without CNAMEs if no cert yet (safe fallback — add them later)
+#   5. Prints the CloudFront domain + GitHub secrets to copy
 
 set -euo pipefail
 
@@ -26,7 +24,7 @@ info()  { echo -e "${GREEN}▶ $*${RESET}"; }
 warn()  { echo -e "${ORANGE}⚠ $*${RESET}"; }
 error() { echo -e "${RED}✖ $*${RESET}"; }
 
-# ─── AWS auth check ──────────────────────────────────────────
+# ─── 1. AWS auth check ───────────────────────────────────────
 echo ""
 info "Checking AWS credentials..."
 
@@ -56,7 +54,7 @@ IDENTITY=$(aws sts get-caller-identity --query 'Arn' --output text)
 info "Authenticated as: ${IDENTITY} (account: ${ACCOUNT})"
 echo ""
 
-# ─── 1. S3 bucket ────────────────────────────────────────────
+# ─── 2. S3 bucket ────────────────────────────────────────────
 info "Creating S3 bucket: $BUCKET in $REGION"
 
 if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
@@ -98,32 +96,53 @@ aws s3api put-bucket-policy \
   }"
 
 info "S3 website endpoint: http://${BUCKET}.s3-website-${REGION}.amazonaws.com"
+echo ""
 
-# ─── 2. CloudFront distribution ──────────────────────────────
-info "Creating CloudFront distribution..."
+# ─── 3. ACM certificate lookup ───────────────────────────────
+# CloudFront requires the cert to be in us-east-1, regardless of bucket region.
+# We accept an explicit ARN via env var, or auto-detect an issued cert.
 
-# You must have an ACM cert in us-east-1 for mabau.com.au + www.mabau.com.au.
-# Find its ARN with:
-#   aws acm list-certificates --region us-east-1
-#
-# Then set it here:
 ACM_CERT_ARN="${ACM_CERT_ARN:-}"
 
 if [[ -z "$ACM_CERT_ARN" ]]; then
-  warn "ACM_CERT_ARN not set — CloudFront will be created WITHOUT a custom SSL cert."
-  warn "Re-run with: ACM_CERT_ARN=arn:aws:acm:us-east-1:... ./scripts/setup-aws.sh"
-  warn "Or update the distribution in the AWS Console after the cert is ready."
-  VIEWER_CERT='"ViewerCertificate": {"CloudFrontDefaultCertificate": true}'
-else
-  VIEWER_CERT="\"ViewerCertificate\": {
+  info "Looking for an issued ACM certificate for ${BUCKET} in us-east-1..."
+  ACM_CERT_ARN=$(aws acm list-certificates \
+    --region us-east-1 \
+    --certificate-statuses ISSUED \
+    --query "CertificateSummaryList[?contains(DomainName, 'mabau.com.au')].CertificateArn | [0]" \
+    --output text 2>/dev/null || true)
+
+  # list-certificates returns "None" (string) when there are no matches
+  if [[ "$ACM_CERT_ARN" == "None" || -z "$ACM_CERT_ARN" ]]; then
+    ACM_CERT_ARN=""
+  fi
+fi
+
+# ─── 4. CloudFront distribution ──────────────────────────────
+info "Creating CloudFront distribution..."
+
+ORIGIN_DOMAIN="${BUCKET}.s3-website-${REGION}.amazonaws.com"
+CALLER_REF="mabau-$(date +%s)"
+
+if [[ -n "$ACM_CERT_ARN" ]]; then
+  info "Using ACM certificate: ${ACM_CERT_ARN}"
+  ALIASES_BLOCK='"Aliases": {"Quantity": 2, "Items": ["mabau.com.au", "www.mabau.com.au"]},'
+  VIEWER_CERT_BLOCK="\"ViewerCertificate\": {
     \"ACMCertificateArn\": \"${ACM_CERT_ARN}\",
     \"SSLSupportMethod\": \"sni-only\",
     \"MinimumProtocolVersion\": \"TLSv1.2_2021\"
   }"
+  CERT_NOTE="with CNAMEs mabau.com.au + www.mabau.com.au"
+else
+  warn "No issued ACM certificate found for mabau.com.au in us-east-1."
+  warn "Creating distribution WITHOUT custom domain names (safe fallback)."
+  warn "Once your certificate is issued, re-run this script or add the CNAMEs"
+  warn "manually: CloudFront Console → distribution → Edit → Alternate domain names."
+  echo ""
+  ALIASES_BLOCK='"Aliases": {"Quantity": 0},'
+  VIEWER_CERT_BLOCK='"ViewerCertificate": {"CloudFrontDefaultCertificate": true, "MinimumProtocolVersion": "TLSv1"}'
+  CERT_NOTE="WITHOUT custom domain (no cert found — add CNAMEs after cert is issued)"
 fi
-
-ORIGIN_DOMAIN="${BUCKET}.s3-website-${REGION}.amazonaws.com"
-CALLER_REF="mabau-$(date +%s)"
 
 DISTRIBUTION=$(aws cloudfront create-distribution \
   --region us-east-1 \
@@ -134,10 +153,7 @@ DISTRIBUTION=$(aws cloudfront create-distribution \
     \"HttpVersion\": \"http2and3\",
     \"PriceClass\": \"PriceClass_All\",
     \"DefaultRootObject\": \"index.html\",
-    \"Aliases\": {
-      \"Quantity\": 2,
-      \"Items\": [\"mabau.com.au\", \"www.mabau.com.au\"]
-    },
+    ${ALIASES_BLOCK}
     \"Origins\": {
       \"Quantity\": 1,
       \"Items\": [{
@@ -160,28 +176,37 @@ DISTRIBUTION=$(aws cloudfront create-distribution \
         \"Items\": [\"GET\", \"HEAD\"]
       }
     },
-    ${VIEWER_CERT}
+    ${VIEWER_CERT_BLOCK}
   }")
 
 CF_DOMAIN=$(echo "$DISTRIBUTION" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['Distribution']['DomainName'])")
 CF_ID=$(echo "$DISTRIBUTION"     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['Distribution']['Id'])")
 
+# ─── 5. Summary ──────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────────────────"
-info "Done! Add these secrets to GitHub → Settings → Secrets:"
+info "CloudFront distribution created (${CERT_NOTE})"
 echo ""
-echo "  AWS_ACCESS_KEY_ID        <your IAM key>"
-echo "  AWS_SECRET_ACCESS_KEY    <your IAM secret>"
-echo "  S3_BUCKET                ${BUCKET}"
+info "Add these secrets to GitHub → Settings → Secrets → Actions:"
+echo ""
+echo "  AWS_ACCESS_KEY_ID           <your IAM deploy key>"
+echo "  AWS_SECRET_ACCESS_KEY       <your IAM deploy secret>"
+echo "  S3_BUCKET                   ${BUCKET}"
 echo "  CLOUDFRONT_DISTRIBUTION_ID  ${CF_ID}"
 echo ""
 info "GoDaddy DNS — add these records:"
 echo ""
 echo "  CNAME  www  →  ${CF_DOMAIN}"
-echo "  ALIAS  @    →  ${CF_DOMAIN}"
+echo "  ALIAS  @    →  ${CF_DOMAIN}   (GoDaddy calls this ALIAS or ANAME)"
 echo ""
 info "CloudFront domain: ${CF_DOMAIN}"
 info "Distribution ID:   ${CF_ID}"
 echo ""
+if [[ -z "$ACM_CERT_ARN" ]]; then
+  warn "Next step: once your ACM certificate is issued in us-east-1, re-run:"
+  warn "  ACM_CERT_ARN=<arn> ./scripts/setup-aws.sh"
+  warn "  (the script will skip the bucket and update only the distribution)"
+  echo ""
+fi
 warn "CloudFront propagation takes 10–20 min on first deploy."
 echo "────────────────────────────────────────────────────────"
