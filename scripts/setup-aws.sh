@@ -21,9 +21,40 @@ BUCKET="mabau.com.au"
 REGION="ap-southeast-2"
 
 # ─── colours ────────────────────────────────────────────────
-GREEN='\033[0;32m'; ORANGE='\033[0;33m'; RESET='\033[0m'
-info()    { echo -e "${GREEN}▶ $*${RESET}"; }
-warn()    { echo -e "${ORANGE}⚠ $*${RESET}"; }
+GREEN='\033[0;32m'; ORANGE='\033[0;33m'; RED='\033[0;31m'; RESET='\033[0m'
+info()  { echo -e "${GREEN}▶ $*${RESET}"; }
+warn()  { echo -e "${ORANGE}⚠ $*${RESET}"; }
+error() { echo -e "${RED}✖ $*${RESET}"; }
+
+# ─── AWS auth check ──────────────────────────────────────────
+echo ""
+info "Checking AWS credentials..."
+
+if ! aws sts get-caller-identity --output text --query 'Account' &>/dev/null; then
+  error "Not authenticated with AWS."
+  echo ""
+  echo "  Run one of the following, then re-run this script:"
+  echo ""
+  echo "  Option A — long-term IAM credentials (simplest):"
+  echo "    aws configure"
+  echo "    # prompts for: Access Key ID, Secret Access Key, region (ap-southeast-2), output (json)"
+  echo ""
+  echo "  Option B — SSO / IAM Identity Center:"
+  echo "    aws configure sso"
+  echo "    aws sso login --profile <profile-name>"
+  echo ""
+  echo "  Option C — environment variables:"
+  echo "    export AWS_ACCESS_KEY_ID=..."
+  echo "    export AWS_SECRET_ACCESS_KEY=..."
+  echo "    export AWS_DEFAULT_REGION=ap-southeast-2"
+  echo ""
+  exit 1
+fi
+
+ACCOUNT=$(aws sts get-caller-identity --query 'Account' --output text)
+IDENTITY=$(aws sts get-caller-identity --query 'Arn' --output text)
+info "Authenticated as: ${IDENTITY} (account: ${ACCOUNT})"
+echo ""
 
 # ─── 1. S3 bucket ────────────────────────────────────────────
 info "Creating S3 bucket: $BUCKET in $REGION"
