@@ -18,6 +18,7 @@
             awscli2
             python3   # used by setup-aws.sh for JSON parsing
             gh
+            viddy
             zsh
           ];
 
